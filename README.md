@@ -152,3 +152,7 @@ TrialPulse-AI/
 - We're using 7 real sites + 38 simulated ones to make the map look populated
 - Site 042 is intentionally broken for demo purposes (low DQI, staffing issues, the works)
 - The AI has fallback responses so it won't crash during your presentation
+
+## Built for Novartis Hackathon
+
+We wanted to show how AI can actually help clinical operations teams instead of just being another buzzword. Hope you like it.
