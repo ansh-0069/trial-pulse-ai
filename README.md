@@ -156,7 +156,3 @@ TrialPulse-AI/
 ## Built for Novartis Hackathon
 
 We wanted to show how AI can actually help clinical operations teams instead of just being another buzzword. Hope you like it.
-
----
-
-Questions? Something not working? Check that both servers are running and your API key is set up correctly.
