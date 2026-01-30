@@ -1,55 +1,71 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Users, Clock, AlertTriangle } from 'lucide-react';
+import { Users, Clock, AlertTriangle, Sliders, RefreshCw } from 'lucide-react';
 import { motion } from 'framer-motion';
-
-// --- MOCK DATA FOR SCENARIOS ---
-
-// Baseline: Things are getting worse (Red Line)
-const DATA_BASELINE = [
-  { day: 'Now', workload: 100, backlog: 20 },
-  { day: '+30d', workload: 120, backlog: 45 },
-  { day: '+60d', workload: 150, backlog: 80 }, // Crisis
-  { day: '+90d', workload: 180, backlog: 120 },
-];
-
-// Scenario 1: Reassign CRA (Green Line - Stabilization)
-const DATA_REASSIGN = [
-  { day: 'Now', workload: 100, backlog: 20 },
-  { day: '+30d', workload: 110, backlog: 25 }, // Slower growth
-  { day: '+60d', workload: 90, backlog: 15 },  // Recovery starts
-  { day: '+90d', workload: 80, backlog: 5 },   // Solved
-];
-
-// Scenario 2: Change SLA (Blue Line - Aggressive Drop)
-const DATA_SLA = [
-  { day: 'Now', workload: 100, backlog: 20 },
-  { day: '+30d', workload: 140, backlog: 10 }, // Higher workload initially
-  { day: '+60d', workload: 80, backlog: 5 },   // Fast clear
-  { day: '+90d', workload: 60, backlog: 0 },
-];
 
 export function DigitalTwin({ onBack }: { onBack: () => void }) {
   const [activeScenario, setActiveScenario] = useState<'baseline' | 'reassign' | 'sla'>('baseline');
+  
+  // --- HITL FEATURE: Human Calibration State ---
+  // The human user overrides the AI's assumption of "100% Staff Capacity"
+  const [staffCapacity, setStaffCapacity] = useState(100); 
 
-  // Dynamic Data based on selection
-  const currentData = activeScenario === 'baseline' ? DATA_BASELINE 
-                    : activeScenario === 'reassign' ? DATA_REASSIGN 
-                    : DATA_SLA;
+  // --- DYNAMIC ENGINE: Recalculate Futures based on Human Input ---
+  const currentData = useMemo(() => {
+    // 1. Define the "Base" curves (AI Predictions at 100% capacity)
+    const baseScenarios = {
+        baseline: [20, 45, 80, 120], // Crisis curve
+        reassign: [20, 25, 15, 5],   // Recovery curve
+        sla: [20, 10, 5, 0]          // Aggressive curve
+    };
+
+    const baseWorkloads = {
+        baseline: [100, 120, 150, 180],
+        reassign: [100, 110, 90, 80],
+        sla: [100, 140, 80, 60]
+    };
+
+    const selectedBase = baseScenarios[activeScenario];
+    const selectedWorkload = baseWorkloads[activeScenario];
+
+    // 2. Apply Human Context Factor
+    // Logic: If Staff Capacity is LOW (<100%), Backlog grows FASTER.
+    //        If Staff Capacity is HIGH (>100%), Backlog drops FASTER.
+    const capacityMultiplier = 1 + ((100 - staffCapacity) / 100); 
+
+    return [
+        { day: 'Now', workload: selectedWorkload[0], backlog: selectedBase[0] },
+        { day: '+30d', workload: selectedWorkload[1], backlog: Math.max(0, Math.round(selectedBase[1] * capacityMultiplier)) },
+        { day: '+60d', workload: selectedWorkload[2], backlog: Math.max(0, Math.round(selectedBase[2] * capacityMultiplier)) },
+        { day: '+90d', workload: selectedWorkload[3], backlog: Math.max(0, Math.round(selectedBase[3] * capacityMultiplier)) },
+    ];
+  }, [activeScenario, staffCapacity]);
+
+  // Recalculate Metrics based on capacity
+  const barChartData = [
+    { 
+      name: 'Visit Comp', 
+      current: 40, 
+      projected: Math.min(100, Math.round((activeScenario === 'baseline' ? 30 : 85) * (staffCapacity / 100))) 
+    },
+    { 
+      name: 'Query Res', 
+      current: 35, 
+      projected: Math.min(100, Math.round((activeScenario === 'baseline' ? 20 : 90) * (staffCapacity / 100))) 
+    },
+    { 
+      name: 'Data Conf', 
+      current: 60, 
+      projected: Math.min(100, Math.round((activeScenario === 'baseline' ? 55 : 88) * (staffCapacity / 100))) 
+    },
+  ];
 
   const getColor = () => activeScenario === 'baseline' ? '#ef4444' // Red
                        : activeScenario === 'reassign' ? '#22c55e' // Green
                        : '#3b82f6'; // Blue
-
-  // FIX: Define BarChart data here, outside of JSX
-  const barChartData = [
-    { name: 'Visit Comp', current: 40, projected: activeScenario === 'baseline' ? 30 : 85 },
-    { name: 'Query Res', current: 35, projected: activeScenario === 'baseline' ? 20 : 90 },
-    { name: 'Data Conf', current: 60, projected: activeScenario === 'baseline' ? 55 : 88 },
-  ];
 
   return (
     <div className="h-full bg-slate-950 p-6 flex flex-col gap-6 text-white overflow-hidden">
@@ -62,14 +78,55 @@ export function DigitalTwin({ onBack }: { onBack: () => void }) {
           </h1>
           <p className="text-slate-500 text-sm">Monte Carlo Simulation (n=10,000 iterations)</p>
         </div>
-        <Button variant="outline" onClick={onBack} className="border-slate-700 text-slate-400">Exit Simulation</Button>
+        <div className="flex gap-2">
+            <Button variant="ghost" onClick={() => setStaffCapacity(100)} className="text-slate-500">
+                <RefreshCw className="w-4 h-4 mr-2" /> Reset Params
+            </Button>
+            <Button variant="outline" onClick={onBack} className="border-slate-700 text-slate-400">Exit Simulation</Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-12 gap-6 flex-1 min-h-0">
         
         {/* LEFT: Control Panel (4 Cols) */}
         <div className="col-span-4 flex flex-col gap-4">
-          <Card className="bg-slate-900/50 border-slate-800">
+          
+          {/* HITL: Human Calibration Control */}
+          <Card className="bg-blue-950/10 border-blue-900/30">
+            <CardHeader className="pb-2">
+                <CardTitle className="text-sm text-blue-400 flex items-center gap-2">
+                    <Sliders className="w-4 h-4" /> Human Calibration (HITL)
+                </CardTitle>
+            </CardHeader>
+            <CardContent>
+                <div className="space-y-4">
+                    <div>
+                        <label className="text-xs text-slate-400 flex justify-between mb-2">
+                            <span>Adjust Real-world Staff Availability</span>
+                            <span className="font-mono text-white">{staffCapacity}%</span>
+                        </label>
+                        <input 
+                            type="range" 
+                            min="50" 
+                            max="150" 
+                            value={staffCapacity} 
+                            onChange={(e) => setStaffCapacity(Number(e.target.value))}
+                            className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                        />
+                        <div className="flex justify-between text-[10px] text-slate-600 mt-1">
+                            <span>Severe Shortage</span>
+                            <span>Normal</span>
+                            <span>Overstaffed</span>
+                        </div>
+                    </div>
+                    <p className="text-[10px] text-slate-500 italic border-l-2 border-slate-700 pl-2">
+                        "The AI assumes 100% capacity. Use this slider to inject real-world context (e.g., sick leave, holidays) into the prediction model."
+                    </p>
+                </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-slate-900/50 border-slate-800 flex-1">
             <CardHeader><CardTitle className="text-sm">Intervention Scenarios</CardTitle></CardHeader>
             <CardContent className="space-y-3">
               
@@ -113,21 +170,22 @@ export function DigitalTwin({ onBack }: { onBack: () => void }) {
           </Card>
 
           {/* Impact Summary Box */}
-          <Card className="flex-1 bg-slate-900/50 border-slate-800 flex flex-col justify-center items-center text-center">
-            <CardContent>
+          <Card className="bg-slate-900/50 border-slate-800 flex flex-col justify-center items-center text-center py-4">
+            <CardContent className="pb-0">
               <div className="text-sm text-slate-500 mb-2">Projected Database Lock</div>
               <motion.div 
-                key={activeScenario}
+                key={`${activeScenario}-${staffCapacity}`} // Animate on change
                 initial={{ scale: 0.8, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
-                className={`text-4xl font-bold mb-1 ${activeScenario === 'baseline' ? 'text-red-500' : 'text-white'}`}
+                className={`text-3xl font-bold mb-1 ${
+                    // Dynamic coloring based on the calculated backlog at 90d
+                    currentData[3].backlog > 20 ? 'text-red-500' : 'text-green-400'
+                }`}
               >
-                {activeScenario === 'baseline' ? '+45 Days' : activeScenario === 'reassign' ? 'On Time' : '-5 Days'}
+                {currentData[3].backlog > 50 ? '+45 Days' : currentData[3].backlog > 10 ? '+15 Days' : 'On Time'}
               </motion.div>
               <div className="text-xs text-slate-400">
-                Financial Impact: <span className={activeScenario === 'baseline' ? 'text-red-400' : 'text-green-400'}>
-                  {activeScenario === 'baseline' ? '-$2.5M Revenue' : 'Savings Secured'}
-                </span>
+                Adjusted for {staffCapacity}% Staffing
               </div>
             </CardContent>
           </Card>
@@ -138,7 +196,10 @@ export function DigitalTwin({ onBack }: { onBack: () => void }) {
           {/* Chart 1: Workload Forecast */}
           <Card className="h-1/2 bg-slate-900/50 border-slate-800">
             <CardHeader className="pb-2 flex flex-row items-center justify-between">
-              <CardTitle className="text-sm text-slate-300">Workload vs. Backlog Projection</CardTitle>
+              <CardTitle className="text-sm text-slate-300">
+                Workload vs. Backlog Projection 
+                <span className="ml-2 text-xs font-normal text-slate-500">(Dynamic Update)</span>
+              </CardTitle>
             </CardHeader>
             <CardContent className="h-full pb-10">
               <ResponsiveContainer width="100%" height="100%">
@@ -164,7 +225,7 @@ export function DigitalTwin({ onBack }: { onBack: () => void }) {
                     stroke={getColor()} 
                     fill="url(#colorSplit)" 
                     strokeWidth={3} 
-                    animationDuration={1000}
+                    animationDuration={500}
                   />
                   <Area 
                     type="monotone" 
@@ -182,12 +243,12 @@ export function DigitalTwin({ onBack }: { onBack: () => void }) {
           {/* Chart 2: Comparative Bar (Before vs After) */}
           <Card className="h-1/2 bg-slate-900/50 border-slate-800">
             <CardHeader className="pb-2">
-               <CardTitle className="text-sm text-slate-300">Site 042 Recovery Metrics</CardTitle>
+               <CardTitle className="text-sm text-slate-300">Site 042 Recovery Metrics (Adjusted)</CardTitle>
             </CardHeader>
             <CardContent className="h-full pb-10">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
-                  data={barChartData} // <--- USING THE VARIABLE HERE
+                  data={barChartData}
                   layout="vertical"
                 >
                   <CartesianGrid strokeDasharray="3 3" stroke="#334155" horizontal={true} vertical={false} />
@@ -202,7 +263,7 @@ export function DigitalTwin({ onBack }: { onBack: () => void }) {
                     fill={activeScenario === 'baseline' ? '#7f1d1d' : '#22c55e'} 
                     radius={[0, 4, 4, 0]} 
                     barSize={20} 
-                    animationDuration={1500}
+                    animationDuration={800}
                   />
                 </BarChart>
               </ResponsiveContainer>

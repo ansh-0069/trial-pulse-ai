@@ -4,7 +4,7 @@ import { AgentNetwork } from '@/components/visuals/AgentNetwork';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Play, CheckCircle, ArrowLeft, Terminal } from 'lucide-react';
+import { Play, CheckCircle, ArrowLeft, Terminal, ShieldCheck, FileSignature, AlertTriangle, XCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // Mock script structure for the UI
@@ -21,10 +21,16 @@ export function AgentWorkspace({ siteId, onBack }: { siteId: string, onBack: () 
   const [activeAgent, setActiveAgent] = useState<string | null>(null);
   const [showPlan, setShowPlan] = useState(false);
 
+  // --- HITL STATE: Review Mode ---
+  const [isReviewing, setIsReviewing] = useState(false);
+  const [isAuthorized, setIsAuthorized] = useState(false);
+
   const runSimulation = async () => {
     setIsRunning(true);
     setLogs([]); // Clear previous
     setShowPlan(false);
+    setIsReviewing(false);
+    setIsAuthorized(false);
 
     try {
       // 1. Call Backend to get the script
@@ -60,6 +66,14 @@ export function AgentWorkspace({ siteId, onBack }: { siteId: string, onBack: () 
     }
   };
 
+  const handleAuthorize = () => {
+    // Simulate the "signing" delay
+    setTimeout(() => {
+        setIsAuthorized(true);
+        addLog('orchestrator', "PLAN AUTHORIZED BY HUMAN SUPERVISOR. EXECUTING...", 'success');
+    }, 800);
+  };
+
   const addLog = (agent: string, msg: string, type: any) => {
     setLogs(prev => [...prev, { id: Date.now().toString(), agent, msg, type }]);
   };
@@ -83,7 +97,7 @@ export function AgentWorkspace({ siteId, onBack }: { siteId: string, onBack: () 
         </div>
         <Button 
           onClick={runSimulation} 
-          disabled={isRunning}
+          disabled={isRunning || showPlan}
           className="bg-blue-600 hover:bg-blue-500 text-white min-w-[150px]"
         >
           {isRunning ? <Terminal className="w-4 h-4 mr-2 animate-spin"/> : <Play className="w-4 h-4 mr-2"/>}
@@ -104,7 +118,7 @@ export function AgentWorkspace({ siteId, onBack }: { siteId: string, onBack: () 
             </CardContent>
           </Card>
 
-          {/* Corrective Action Plan (Appears at end) */}
+          {/* HUMAN-IN-THE-LOOP COMPLIANCE GATE */}
           <AnimatePresence>
             {showPlan && (
               <motion.div
@@ -112,18 +126,88 @@ export function AgentWorkspace({ siteId, onBack }: { siteId: string, onBack: () 
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
               >
-                <Card className="bg-green-950/20 border-green-900">
+                <Card className={`border-2 transition-colors duration-500 ${isAuthorized ? 'bg-green-950/30 border-green-500' : 'bg-blue-950/20 border-blue-500/50'}`}>
                   <CardHeader>
-                    <CardTitle className="text-green-400 flex items-center gap-2">
-                      <CheckCircle className="w-5 h-5" /> Recommended Action
+                    <CardTitle className={`${isAuthorized ? 'text-green-400' : 'text-blue-400'} flex items-center gap-2`}>
+                      {isAuthorized ? <CheckCircle className="w-5 h-5" /> : <ShieldCheck className="w-5 h-5" />} 
+                      {isAuthorized ? 'Action Authorized' : 'Proposed Mitigation Plan'}
                     </CardTitle>
                   </CardHeader>
-                  <CardContent className="text-sm text-green-100/80 space-y-2">
-                    <p>1. Reassign Senior CRA from Site 008.</p>
-                    <p>2. Initiate Remote Monitoring Audit.</p>
-                    <Button className="w-full mt-4 bg-green-700 hover:bg-green-600 text-white text-sm py-1 px-3">
-                      Auto-Execute (Digital Twin Verify)
-                    </Button>
+                  <CardContent className="text-sm text-slate-200 space-y-3">
+                    {/* The Plan */}
+                    <div className="space-y-1">
+                        <p className="flex items-start gap-2"><span className="text-slate-500">1.</span> Reassign Senior CRA from Site 008.</p>
+                        <p className="flex items-start gap-2"><span className="text-slate-500">2.</span> Initiate Remote Monitoring Audit.</p>
+                    </div>
+                    
+                    {/* AI Confidence Box */}
+                    {!isAuthorized && (
+                        <div className="p-3 bg-slate-950 rounded border border-slate-800 text-xs font-mono">
+                        <div className="flex justify-between mb-1">
+                            <span className="text-slate-500">AI Confidence:</span>
+                            <span className="text-green-400 font-bold">94.2%</span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span className="text-slate-500">Reasoning:</span>
+                            <span className="text-slate-400">Correlates with high CRA turnover.</span>
+                        </div>
+                        </div>
+                    )}
+
+                    {/* Interaction Buttons (The Gate) */}
+                    {!isReviewing && !isAuthorized ? (
+                        <div className="flex gap-2 mt-4 pt-2 border-t border-slate-800">
+                            <Button 
+                                onClick={() => setIsReviewing(true)} 
+                                className="flex-1 bg-blue-600 hover:bg-blue-500 text-white"
+                            >
+                                Review & Approve
+                            </Button>
+                            <Button variant="outline" className="border-red-900/50 text-red-400 hover:bg-red-950/30">
+                                Reject
+                            </Button>
+                        </div>
+                    ) : isReviewing && !isAuthorized ? (
+                        <motion.div 
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            className="mt-4 pt-4 border-t border-slate-700 bg-slate-900/50 p-3 rounded"
+                        >
+                            <div className="flex items-center gap-2 mb-3 text-yellow-400 text-xs font-bold uppercase tracking-wider">
+                                <AlertTriangle className="w-4 h-4" /> Compliance Check
+                            </div>
+                            <p className="text-xs text-slate-400 mb-4">
+                                By authorizing, you confirm this action aligns with <strong>SOP-104 (Resource Allocation)</strong> and accepts the associated risk profile.
+                            </p>
+                            <div className="flex gap-2">
+                                <Button 
+                                    onClick={handleAuthorize} 
+                                    className="w-full bg-green-600 hover:bg-green-500 text-white flex justify-between items-center group"
+                                >
+                                    <span>e-Sign & Execute</span>
+                                    <FileSignature className="w-4 h-4 opacity-70 group-hover:opacity-100" />
+                                </Button>
+                                <Button 
+                                    variant="ghost" 
+                                    onClick={() => setIsReviewing(false)}
+                                    className="px-2 text-slate-500 hover:text-white"
+                                >
+                                    <XCircle className="w-5 h-5" />
+                                </Button>
+                            </div>
+                        </motion.div>
+                    ) : (
+                        <div className="mt-4 pt-4 border-t border-green-900/50 flex flex-col gap-2">
+                            <div className="text-xs text-green-400 font-mono flex justify-between">
+                                <span>STATUS:</span>
+                                <span>EXECUTING</span>
+                            </div>
+                             <div className="text-xs text-green-400/60 font-mono flex justify-between">
+                                <span>AUTH_ID:</span>
+                                <span>XC-992-MM</span>
+                            </div>
+                        </div>
+                    )}
                   </CardContent>
                 </Card>
               </motion.div>

@@ -3,19 +3,20 @@ import axios from 'axios';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Mic, Send, Bot, User, Sparkles } from 'lucide-react';
+import { Mic, Send, Bot, User, Sparkles, ThumbsUp, ThumbsDown, Check, AlertCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 interface Message {
   id: number;
   role: 'user' | 'ai';
   text: string;
+  feedback?: 'positive' | 'negative' | null; // Track feedback state
 }
 
 export function NLInterface({ onBack }: { onBack: () => void }) {
   const [query, setQuery] = useState('');
   const [messages, setMessages] = useState<Message[]>([
-    { id: 1, role: 'ai', text: 'Hello. I am TrialPulse. Ask me about site risks, enrollment status, or database lock predictions.' }
+    { id: 1, role: 'ai', text: 'Hello. I am TrialPulse. Ask me about site risks, enrollment status, or database lock predictions.', feedback: null }
   ]);
   const [loading, setLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -24,31 +25,53 @@ export function NLInterface({ onBack }: { onBack: () => void }) {
   const handleSend = async () => {
     if (!query.trim()) return;
 
-    const userMsg = { id: Date.now(), role: 'user' as const, text: query };
+    const userMsg: Message = { id: Date.now(), role: 'user', text: query, feedback: null };
     setMessages(prev => [...prev, userMsg]);
     setQuery('');
     setLoading(true);
 
     try {
       const res = await axios.post('http://localhost:8000/api/nl-query', { query: userMsg.text });
-      const aiMsg = { id: Date.now() + 1, role: 'ai' as const, text: res.data.response };
+      const aiMsg: Message = { id: Date.now() + 1, role: 'ai', text: res.data.response, feedback: null };
       setMessages(prev => [...prev, aiMsg]);
     } catch (err) {
-      setMessages(prev => [...prev, { id: Date.now(), role: 'ai', text: "Error connecting to server." }]);
+      setMessages(prev => [...prev, { id: Date.now(), role: 'ai', text: "Error connecting to server.", feedback: null }]);
     } finally {
       setLoading(false);
     }
   };
 
-  // 2. Mock Voice Input (Browser API is flaky in iframes/some envs, this is safer for demo)
+  // 2. Mock Voice Input (Simulates listening)
   const toggleVoice = () => {
     setIsListening(!isListening);
     if (!isListening) {
       setTimeout(() => {
         setQuery("Is Site 042 ready for database lock?");
         setIsListening(false);
-      }, 2000); // Simulate 2s of listening then auto-fill
+      }, 2000); 
     }
+  };
+
+  // 3. HITL FEATURE: Active Learning Feedback Loop
+  const handleFeedback = (id: number, type: 'positive' | 'negative') => {
+    if (type === 'negative') {
+        // SIMULATE ACTIVE LEARNING: Ask expert for ground truth
+        const correction = window.prompt("🚩 Flagged for Retraining: What is the correct information?");
+        
+        if (correction) {
+            // In a real app, send this to backend for fine-tuning
+            console.log(`[Active Learning] Tuning model with correction: ${correction}`);
+            // Provide visual confirmation to the user
+            alert("✅ Knowledge Base Updated. The model will prioritize this correction in future queries.");
+        } else {
+            return; // User cancelled
+        }
+    }
+
+    // Update UI to show feedback was registered
+    setMessages(prev => prev.map(msg => 
+        msg.id === id ? { ...msg, feedback: type } : msg
+    ));
   };
 
   return (
@@ -74,16 +97,53 @@ export function NLInterface({ onBack }: { onBack: () => void }) {
                 key={msg.id}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className={`flex gap-4 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}
+                className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}
               >
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${msg.role === 'ai' ? 'bg-blue-600' : 'bg-slate-700'}`}>
-                  {msg.role === 'ai' ? <Bot className="w-6 h-6 text-white" /> : <User className="w-6 h-6 text-white" />}
+                <div className={`flex gap-4 max-w-[80%] ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                    {/* Avatar */}
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${msg.role === 'ai' ? 'bg-blue-600' : 'bg-slate-700'}`}>
+                    {msg.role === 'ai' ? <Bot className="w-6 h-6 text-white" /> : <User className="w-6 h-6 text-white" />}
+                    </div>
+                    
+                    {/* Message Bubble */}
+                    <div className={`p-4 rounded-2xl ${msg.role === 'ai' ? 'bg-slate-800 text-slate-100' : 'bg-blue-600 text-white'}`}>
+                    {msg.text}
+                    </div>
                 </div>
-                <div className={`p-4 rounded-2xl max-w-[80%] ${msg.role === 'ai' ? 'bg-slate-800 text-slate-100' : 'bg-blue-600 text-white'}`}>
-                  {msg.text}
-                </div>
+
+                {/* HITL FEEDBACK CONTROLS (Only for AI messages) */}
+                {msg.role === 'ai' && (
+                    <div className="flex items-center gap-2 mt-2 ml-14">
+                        {msg.feedback === 'positive' ? (
+                            <span className="text-green-400 text-xs flex items-center gap-1">
+                                <Check className="w-3 h-3" /> Helpful
+                            </span>
+                        ) : msg.feedback === 'negative' ? (
+                            <span className="text-yellow-400 text-xs flex items-center gap-1">
+                                <AlertCircle className="w-3 h-3" /> Flagged for Review
+                            </span>
+                        ) : (
+                            <>
+                                <button 
+                                    onClick={() => handleFeedback(msg.id, 'positive')}
+                                    className="text-slate-500 hover:text-green-400 text-xs flex items-center gap-1 transition-colors"
+                                >
+                                    <ThumbsUp className="w-3 h-3" /> Helpful
+                                </button>
+                                <span className="text-slate-700">|</span>
+                                <button 
+                                    onClick={() => handleFeedback(msg.id, 'negative')}
+                                    className="text-slate-500 hover:text-red-400 text-xs flex items-center gap-1 transition-colors"
+                                >
+                                    <ThumbsDown className="w-3 h-3" /> Incorrect
+                                </button>
+                            </>
+                        )}
+                    </div>
+                )}
               </motion.div>
             ))}
+            
             {loading && (
               <div className="flex gap-4">
                 <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center shrink-0">
@@ -102,7 +162,7 @@ export function NLInterface({ onBack }: { onBack: () => void }) {
           <div className="p-4 border-t border-slate-800 bg-slate-950/50 flex gap-4 items-center">
             <Button 
               variant={isListening ? "default" : "outline"} 
-              className={`rounded-full h-12 w-12 shrink-0 ${isListening ? 'animate-pulse' : ''}`}
+              className={`rounded-full h-12 w-12 shrink-0 ${isListening ? 'animate-pulse bg-red-500/20 border-red-500 text-red-500' : ''}`}
               onClick={toggleVoice}
             >
               <Mic className="w-5 h-5" />
